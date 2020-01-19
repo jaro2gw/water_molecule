@@ -46,20 +46,22 @@ const char symbol[2] = {'H', 'O'};
 #define PRODUCER_TAG "[%c#%03d]"
 #define CONSUMER_TAG "<~H2O~>"
 
+#define PRODUCER_ARGS symbol[this->atom], this->ID
+
 void *produceAtoms(void *arg) {
     struct producer *this = arg;
     while (1) {
-        printf(PRODUCER_TAG" is producing a new atom...\n", symbol[this->atom], this->ID);
+        printf(PRODUCER_TAG" is producing a new atom...\n", PRODUCER_ARGS);
         sleep(rand_r(&mySeed) % 5 + 5); /* Producing an atom takes from 5 to 9 seconds. */
-        printf(PRODUCER_TAG" produced a new atom!\n", symbol[this->atom], this->ID);
+        printf(PRODUCER_TAG" produced a new atom!\n", PRODUCER_ARGS);
 
         lock(this->atom);
         /* If required atoms have been supplied already, producer waits until it receives
          * a signal indicating that new atoms are required. */
         while (!required[this->atom]) WAIT(this->atom);
-        printf(PRODUCER_TAG" will deliver atom #%d\n", symbol[this->atom], this->ID, required[this->atom]--);
-        /* Read current `count` value before sending the signal to ensure that producer is up-to-date.
-         * Reading the `count` value before unlocking `this->atom` ensures exclusive access to the variable. */
+        printf(PRODUCER_TAG" will deliver atom #%d\n", PRODUCER_ARGS, required[this->atom]--);
+        /* Reading the `count` value before unlocking `this->atom` ensures that consumer
+         * cannot modify the value in the meantime. */
         int currentCount = count;
         /* Check whether this atom was the last one required. If so, send the signal that
          * the required amount of atoms has been delivered. Checking for the `not required`
@@ -96,6 +98,7 @@ void *initializeProducers(void *arg) {
         if (pthread_create(&ignored, &attributes, produceAtoms, this))
             errorExit(PRODUCER_TAG" - creating producer failed!\n", symbol[info->atom], p);
     }
+
     pthread_exit(NULL);
 }
 
@@ -126,13 +129,6 @@ void startProducers() {
     pthread_join(oxygenProducersInitializer, NULL);
 }
 
-void gather(int atom) {
-    lock(atom);
-    /* Waiting until the required amount of atoms is reduced to 0. */
-    while (required[atom]) wait(READY, atom);
-    unlock(atom);
-}
-
 void require(int atom, int amount) {
     lock(atom);
     required[atom] = amount;
@@ -140,6 +136,13 @@ void require(int atom, int amount) {
      * prevents the rest of the producers from waking up unnecessarily.
      * Useful if the number of producers is much greater than the required `amount`. */
     while (amount--) sendSignal(atom);
+    unlock(atom);
+}
+
+void gather(int atom) {
+    lock(atom);
+    /* Waiting until the required amount of atoms is reduced to 0. */
+    while (required[atom]) wait(READY, atom);
     unlock(atom);
 }
 
@@ -155,7 +158,7 @@ int main() {
         gather(OXYGEN);
 
         lock(FINISHED);
-        printf(CONSUMER_TAG" Water created! Molecules created so far: %d\n", ++count);
+        printf(CONSUMER_TAG" Molecules created so far: %d\n", ++count);
         /* Wakes up any producer thread that delivered an atom for this molecule. */
         broadcastSignal(FINISHED);
         unlock(FINISHED);
