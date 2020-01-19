@@ -4,8 +4,8 @@
 #include <pthread.h>
 #include <unistd.h>
 
-#define HYDROGEN_PRODUCERS 10
-#define OXYGEN_PRODUCERS 10
+#define HYDROGEN_PRODUCERS 500
+#define OXYGEN_PRODUCERS 500
 
 pthread_cond_t condition[4];
 pthread_mutex_t mutex[3];
